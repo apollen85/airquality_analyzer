@@ -1,6 +1,5 @@
-# Notes to future self:
-# Times for door and windows seem to be off. Unreasonable. Beginning okay because switch not connected.
-
+# Note:
+# The raw windows data is unreasonable. I don't think it is the code.
 
 from datetime import datetime
 import numpy as np
@@ -115,10 +114,10 @@ class DataChunk:
     
     def calcDoorWindowStateBefore(self, data: pd.DataFrame):
         data = data.dropna()
-        print(data)
-        print("")
-        print("")
-        print("")
+        # print(data)
+        # print("")
+        # print("")
+        # print("")
         # data = data.ffill()
         # print("")
         # print(self.startTime)
@@ -243,10 +242,19 @@ class DataChunk:
             timeOpen = pd.Timedelta(0)
             timeClosed = pd.Timedelta(0)
             returndata = None
+            beginState = None
+            state = None
+            if quantity=="door":
+                beginState = self.beginDoorState
+                state = beginState
+                
+            else:
+                beginState = self.beginWindowState
+                state = beginState
             # print(data)
 
             if len(data) == 0:
-                if self.beginDoorState == doorwin_open:
+                if state == doorwin_open:
                     timeOpen = self.duration
                 else:
                     timeClosed = self.duration
@@ -257,30 +265,37 @@ class DataChunk:
                 # print("")
                 # print("")
             else:
-
-                doorState = self.beginDoorState
+                # if quantity=="window":
+                #     print(self.startTime)
+                #     print(quantity)
+                #     print(data)
+                
                 for i in range(len(data)):
+                    # Convert times to timestamp (to enable time difference calculation)
                     data.iloc[i, 0] = pd.Timestamp(data.iloc[i, 0])
+
                     if i==0:
                         previousTime = self.startTime
-                        doorState = self.beginDoorState
+                        state = beginState
                     else:
-                        doorState = data.iloc[i, 1]
+                        state = data.iloc[i-1, 1]
                         previousTime = data.iloc[i-1, 0]
 
                     timeDiff = data.iloc[i, 0]-previousTime
 
-                    if doorState == doorwin_open:
+                    if state == doorwin_open:
                         timeOpen += timeDiff
                     else:
                         timeClosed += timeDiff
-                    # print(f"timeOpen: {timeOpen}")
+
+                    # if quantity=="window":
+                    #     print(f"timeOpen: {timeOpen}")
                     
                 
                 # Special case for last iteration
-                doorState = data.iloc[len(data)-1, 1]
-                timeDiff = self.endTime-data.iloc[len(data)-1, 0]
-                if doorState == doorwin_open:
+                state = data.iloc[-1, 1]
+                timeDiff = self.endTime-data.iloc[-1, 0]
+                if state == doorwin_open:
                     timeOpen += timeDiff
                 else:
                     timeClosed += timeDiff
@@ -290,8 +305,9 @@ class DataChunk:
                 returndata = [closings, openings, shareClosed, shareOpen]
                 # print(f"timeopen: {timeOpen}")
                 # print(f"Returndata: {returndata}")
-                # print("")
-                # print("")
+                # if quantity=="window":
+                #     print("")
+                #     print("")
 
                 
         return returndata
