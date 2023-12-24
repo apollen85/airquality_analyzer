@@ -1,5 +1,5 @@
 # Notes to future self:
-# The times for switches seem to be way off. Investigate
+# Times for door and windows seem to be off. Unreasonable. Beginning okay because switch not connected.
 
 
 from datetime import datetime
@@ -8,6 +8,7 @@ import pandas as pd
 # import matplotlib.pyplot as plt
 from functools import reduce
 # import analyzer as analyzer
+from string import Template
 
 # plt.close("all")
 
@@ -66,6 +67,9 @@ eco2_bad = co2_bad
 
 # ---------------------------------------------------
 
+class DeltaTemplate(Template):
+    delimiter="%"
+
 
 # Data from all sensors for a period of time
 class DataChunk:
@@ -94,13 +98,28 @@ class DataChunk:
         self.windowShareOpen = 0
         self.windowShareClosed = 0
 
+    def strfdelta(self, deltaObj, format):
+        d = {"D": deltaObj.days}
+        hours, rem = divmod(deltaObj.seconds, 3600)
+        minutes, seconds = divmod(rem, 60)
+        d["H"] = '{:02d}'.format(hours)
+        d["M"] = '{:02d}'.format(minutes)
+        d["S"] = '{:02d}'.format(seconds)
+        t = DeltaTemplate(format)
+        return t.substitute(**d)
+
     def filterData(self, startTime, endTime, data: pd.DataFrame):
         # Filtering out unwanted times from the data
         data = data[(data["Time"] >= startTime) & (data["Time"] <= endTime)]
         return data
     
-    def calcDoorWindowStateBefore(self, data):
+    def calcDoorWindowStateBefore(self, data: pd.DataFrame):
         data = data.dropna()
+        print(data)
+        print("")
+        print("")
+        print("")
+        # data = data.ffill()
         # print("")
         # print(self.startTime)
         # print(data.tail(25))
@@ -126,15 +145,29 @@ class DataChunk:
     # - Number of times door/windows opened/closed
     # - Share of time doow/window open/closed
     def compileData(self):
+        timeColumns = ["Start Time", "End Time", "Duration"]
+
         tempValues = self.calcValues("temperature", self.dataSeries)
+        tempColumns = ["Temperature badlower", "Temperature good", "Temperature badupper"]
+
         co2Values = self.calcValues("co2", self.dataSeries)
+        co2Columns = ["CO2 good", "CO2 warning", "CO2 bad"]
+
         eco2Values = self.calcValues("eco2", self.dataSeries)
+        eco2Columns = ["eCO2 good", "eCO2 warning", "eCO2 bad"]
+
         doorValues = self.calcValues("door", self.dataSeries.filter(regex="Time|_Door"))
+        doorColumns = ["Door closings", "Door Openings", "Door closed", "Door open"]
+
         windowValues = self.calcValues("window", self.dataSeries.filter(regex="Time|_Window"))
+        windowColumns = ["Window closings", "Window openings", "Window closed", "Window open"]
+
+        self.duration = self.strfdelta(self.duration, "%H:%M")
+
         resultList = [self.startTime, self.endTime, self.duration] + tempValues + co2Values + eco2Values + doorValues + windowValues
-        # resultList = [[element] for element in resultList]
         resultList = [resultList]
-        resultFrame = pd.DataFrame(resultList, columns=["Start Time", "End Time", "Duration", "Temperature badlower", "Temperature good", "Temperature badupper", "CO2 good", "CO2 warning", "CO2 bad", "eCO2 good", "eCO2 warning", "eCO2 bad", "Door openings", "Door closings", "Door closed", "Door open", "Window closings", "Window openings", "Window closed", "Window open"])
+        resultFrame = pd.DataFrame(resultList, columns=timeColumns+tempColumns+co2Columns+eco2Columns+doorColumns+windowColumns)
+        # resultFrame = pd.DataFrame(resultList, columns=["Start Time", "End Time", "Duration", "Temperature badlower", "Temperature good", "Temperature badupper", "CO2 good", "CO2 warning", "CO2 bad", "eCO2 good", "eCO2 warning", "eCO2 bad", "Door openings", "Door closings", "Door closed", "Door open", "Window closings", "Window openings", "Window closed", "Window open"])
         # print(resultFrame)
         return resultFrame
     
@@ -201,6 +234,8 @@ class DataChunk:
             # print(f"Good:{shareGood} Warn: {shareWarn} Bad: {shareBad}")
             returndata = [shareGood, shareWarn, shareBad]
         elif quantity == "door" or quantity == "window":
+            doorwin_closed = 1
+            doorwin_open = 0
             data = data.dropna()
             noTimeData = data.filter(regex="^(?!.*Time).*$")
             openings = len(noTimeData == 1)
@@ -211,44 +246,41 @@ class DataChunk:
             # print(data)
 
             if len(data) == 0:
-                if self.beginDoorState == 1:
+                if self.beginDoorState == doorwin_open:
                     timeOpen = self.duration
-                    timeClosed = self.duration - self.duration
                 else:
                     timeClosed = self.duration
-                    timeOpen = self.duration -self.duration
                 shareOpen = timeOpen/self.duration
                 shareClosed = timeClosed/self.duration
                 returndata = [closings, openings, shareClosed, shareOpen]
-                print(f"Returndata: {returndata}")
-                print("")
-                print("")
+                # print(f"Returndata: {returndata}")
+                # print("")
+                # print("")
             else:
 
                 doorState = self.beginDoorState
                 for i in range(len(data)):
-                    data.iloc[i, 1] = pd.Timestamp(data.iloc[i, 1])
+                    data.iloc[i, 0] = pd.Timestamp(data.iloc[i, 0])
                     if i==0:
                         previousTime = self.startTime
                         doorState = self.beginDoorState
                     else:
                         doorState = data.iloc[i, 1]
                         previousTime = data.iloc[i-1, 0]
+
                     timeDiff = data.iloc[i, 0]-previousTime
-                    if doorState == 1:
+
+                    if doorState == doorwin_open:
                         timeOpen += timeDiff
-                    elif doorState == 0:
+                    else:
                         timeClosed += timeDiff
-                    print(f"timeOpen: {timeOpen}")
+                    # print(f"timeOpen: {timeOpen}")
                     
                 
-                if len(data) == 0:
-                    doorState = data.iloc[0, 1]
-                else:
-                    doorState = data.iloc[len(data)-1, 1]
-                
+                # Special case for last iteration
+                doorState = data.iloc[len(data)-1, 1]
                 timeDiff = self.endTime-data.iloc[len(data)-1, 0]
-                if doorState == 1:
+                if doorState == doorwin_open:
                     timeOpen += timeDiff
                 else:
                     timeClosed += timeDiff
@@ -256,10 +288,10 @@ class DataChunk:
                 shareOpen = timeOpen/self.duration
                 shareClosed = timeClosed/self.duration
                 returndata = [closings, openings, shareClosed, shareOpen]
-                print(f"timeopen: {timeOpen}")
-                print(f"Returndata: {returndata}")
-                print("")
-                print("")
+                # print(f"timeopen: {timeOpen}")
+                # print(f"Returndata: {returndata}")
+                # print("")
+                # print("")
 
                 
         return returndata
