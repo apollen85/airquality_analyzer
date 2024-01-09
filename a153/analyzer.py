@@ -27,6 +27,8 @@ dataFiles = [tempFile, rhFile, co2File, tvocFile, eco2File, doorFile, windowfile
 
 # Input file for the time intervals
 timeFile = "time_filter_"+classroom+".csv"
+globalStartTime = datetime(2023, 11, 27, 00, 00, 00)
+globalStopTime = datetime(2023, 12, 22, 23, 59, 59)
 
 dateFormat = '%Y-%m-%d %H:%M'
 
@@ -81,7 +83,7 @@ class DataChunk:
 
         # print(inputData)
         self.beginDoorState = self.calcDoorWindowStateBefore(inputData.filter(regex="Time|_Door"))
-        self. beginWindowState = self.calcDoorWindowStateBefore(inputData.filter(regex="Time|_Window"))
+        self.beginWindowState = self.calcDoorWindowStateBefore(inputData.filter(regex="Time|_Window"))
         
         self.dataSeries = self.filterData(self.startTime, self.endTime, inputData)
         self.duration = endTime-startTime
@@ -155,6 +157,9 @@ class DataChunk:
         eco2Values = self.calcValues("eco2", self.dataSeries)
         eco2Columns = ["eCO2 good", "eCO2 warning", "eCO2 bad"]
 
+        eco2Diffs = self.calcEco2Diff(self.dataSeries.filter(regex="Time|_CO2"), self.dataSeries.filter(regex="Time|_eCO2"))
+        eco2DiffColumns = ["eCO2Diff absolute", "eCO2Diff signed"]
+
         doorValues = self.calcValues("door", self.dataSeries.filter(regex="Time|_Door"))
         doorColumns = ["Door closings", "Door Openings", "Door closed", "Door open"]
 
@@ -163,9 +168,9 @@ class DataChunk:
 
         self.duration = self.strfdelta(self.duration, "%H:%M")
 
-        resultList = [self.startTime, self.endTime, self.duration] + tempValues + co2Values + eco2Values + doorValues + windowValues
+        resultList = [self.startTime, self.endTime, self.duration] + tempValues + co2Values + eco2Values + eco2Diffs + doorValues + windowValues
         resultList = [resultList]
-        resultFrame = pd.DataFrame(resultList, columns=timeColumns+tempColumns+co2Columns+eco2Columns+doorColumns+windowColumns)
+        resultFrame = pd.DataFrame(resultList, columns=timeColumns+tempColumns+co2Columns+eco2Columns+eco2DiffColumns+doorColumns+windowColumns)
         # resultFrame = pd.DataFrame(resultList, columns=["Start Time", "End Time", "Duration", "Temperature badlower", "Temperature good", "Temperature badupper", "CO2 good", "CO2 warning", "CO2 bad", "eCO2 good", "eCO2 warning", "eCO2 bad", "Door openings", "Door closings", "Door closed", "Door open", "Window closings", "Window openings", "Window closed", "Window open"])
         # print(resultFrame)
         return resultFrame
@@ -173,6 +178,34 @@ class DataChunk:
     def getValuesInRange(self, range: Range, data: pd.DataFrame):
         # print(data.filter(regex="^(?!.*Time).*$").squeeze())
         return data.filter(regex="^(?!.*Time).*$").squeeze().between(left=range.lower, right=range.upper, inclusive="neither").sum()
+    
+    def calcEco2Diff(self, co2Data: pd.DataFrame, eco2Data: pd.DataFrame):
+        returndata = None
+        # Merge  that are close enough
+        co2Data = co2Data.dropna()
+        eco2Data = eco2Data.dropna()
+        co2Data.index = co2Data.iloc[:, 0]
+        eco2Data.index = eco2Data.iloc[:, 0]
+        tol = pd.Timedelta(seconds=5)
+        combinedFrame = pd.merge_asof(left=co2Data, right=eco2Data, left_index=True, right_index=True, direction='nearest')
+        # print(combinedFrame)
+
+        # Calculate differences (signed and absolute)
+        signedSum = 0
+        absoluteSum = 0
+        for i in range(len(combinedFrame)):
+            diff = combinedFrame.iloc[i, 1]-combinedFrame.iloc[i, 3]
+            signedSum += diff
+            absoluteSum += abs(diff)
+
+        # Average differences
+        valueNum = combinedFrame.filter(regex="Time").squeeze().count()
+        signedDiff = signedSum/valueNum
+        absoluteDiff = absoluteSum/valueNum
+
+        # Return differences
+        returndata = [absoluteDiff, signedDiff]
+        return returndata
     
     # Note: Values may be slightly wrong. Should count time, but actually counts number of measurements. Should work as the measurements are taken at fixed timings.
     def calcValues(self, quantity: str, data: pd.DataFrame):
@@ -321,7 +354,7 @@ class DataCollection:
         self.dataFiles = dataFiles
 
     # Read input data from the files and split the data up into the chunks
-    def fillChunks(self):
+    def fillChunks(self, invertTimes=False):
         self.readTimeLimits(self.timeFile)
         self.readDataFiles(self.dataFiles)
 
@@ -333,8 +366,15 @@ class DataCollection:
             # Trim away already processed data? Optimization for later
 
 
-        for ind in self.timeLimits.index:
-            self.dataChunks.append(DataChunk(self.timeLimits["Start Time"][ind], self.timeLimits["End Time"][ind], self.dataSet))
+        if invertTimes==True:
+            self.dataChunks.append(DataChunk(globalStartTime, self.timeLimits.iloc[0, 0], self.dataSet))
+            for i in range(len(self.timeLimits)-1):
+                self.dataChunks.append(DataChunk(self.timeLimits.iloc[i, 1], self.timeLimits.iloc[i+1, 0], self.dataSet))
+            self.dataChunks.append(DataChunk(self.timeLimits.iloc[len(self.timeLimits)-1, 1], globalStopTime, self.dataSet))
+        else:
+            # Fill the chunks with the correct start and end times
+            for ind in self.timeLimits.index:
+                self.dataChunks.append(DataChunk(self.timeLimits["Start Time"][ind], self.timeLimits["End Time"][ind], self.dataSet))
 
         # for chunk in self.dataChunks:
         #     print(chunk.dataSeries)
@@ -397,9 +437,15 @@ class DataCollection:
 dataCollection = DataCollection(timeFile, dataFiles)
 dataCollection.fillChunks()
 
+# outsideLessons = DataCollection(timeFile, dataFiles)
+# outsideLessons.fillChunks(True)
+
     
 finishedData = dataCollection.compileData()
 print(finishedData)
+
+# outsideData = outsideLessons.compileData()
+# print(outsideData)
 
 finishedData.to_csv("compiledData_"+classroom+".csv", index=False, sep=";", decimal=",")
 

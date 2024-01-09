@@ -437,15 +437,15 @@ class DataCollection:
 dataCollection = DataCollection(timeFile, dataFiles)
 dataCollection.fillChunks()
 
-outsideLessons = DataCollection(timeFile, dataFiles)
-outsideLessons.fillChunks(True)
+# outsideLessons = DataCollection(timeFile, dataFiles)
+# outsideLessons.fillChunks(True)
 
     
 finishedData = dataCollection.compileData()
 print(finishedData)
 
-outsideData = outsideLessons.compileData()
-print(outsideData)
+# outsideData = outsideLessons.compileData()
+# print(outsideData)
 
 finishedData.to_csv("compiledData_"+classroom+".csv", index=False, sep=";", decimal=",")
 
