@@ -50,8 +50,8 @@ rh_good = Range(0, 0)
 rh_badupper = Range(0, 0)
 
 # CO2
-co2_good = Range(0, 600)
-co2_warn = Range(600, 1000)
+co2_good = Range(0, 800)
+co2_warn = Range(800, 1000)
 co2_bad = Range(1000, 20000)
 
 # TVOC
