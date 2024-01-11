@@ -199,7 +199,7 @@ class DataChunk:
             absoluteSum += abs(diff)
 
         # Average differences
-        valueNum = combinedFrame.filter(regex="Time").squeeze().count()
+        valueNum = len(combinedFrame.index)
         signedDiff = signedSum/valueNum
         absoluteDiff = absoluteSum/valueNum
 

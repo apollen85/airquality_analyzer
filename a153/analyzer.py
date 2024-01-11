@@ -1,5 +1,5 @@
 # Note:
-# The raw windows data is unreasonable. I don't think it is the code.
+# The raw window data is unreasonable. I don't think it is the code.
 
 from datetime import datetime
 import numpy as np
@@ -199,7 +199,7 @@ class DataChunk:
             absoluteSum += abs(diff)
 
         # Average differences
-        valueNum = combinedFrame.filter(regex="Time").squeeze().count()
+        valueNum = len(combinedFrame.index)
         signedDiff = signedSum/valueNum
         absoluteDiff = absoluteSum/valueNum
 
